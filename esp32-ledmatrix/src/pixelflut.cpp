@@ -1,7 +1,8 @@
 #include <WiFi.h>
 #include <math.h>
 #include "pixelflut.h"
-#include "pixelbuf.h"
+#include "color.h"
+#include "framebuffer.h"
 
 WiFiClient *clients[PIXELFLUT_MAX_CLIENTS] = {0};
 char buffers[PIXELFLUT_MAX_CLIENTS][PIXELFLUT_MAX_MSG + 1] = {0};
@@ -9,6 +10,8 @@ uint16_t bufferPositions[PIXELFLUT_MAX_CLIENTS] = {0};
 
 const char *handle_message(const char *msg);
 void setPixel(int x, int y, uint8_t r, uint8_t g, uint8_t b);
+
+size_t currentFlutFrame = 0;
 
 void handle_clients(WiFiServer *server)
 {
@@ -81,7 +84,7 @@ void handle_clients(WiFiServer *server)
 const char *handle_message(const char *msg)
 {
     Serial.println(msg);
-    if (strncmp(msg, "PX", 2) == 0)
+    if (strncmp(msg, "PX ", 3) == 0)
     {
         int x;
         int y;
@@ -108,11 +111,33 @@ const char *handle_message(const char *msg)
             Serial.println(msg + 2);
         }
     }
-    else if (strncmp(msg, "SIZE", 4) == 0)
+    else if (strncmp(msg, "SIZE ", 5) == 0)
     {
         char *response = new char[20];
         sprintf(response, "SIZE %d %d \n", (int)FRAME_WIDTH, (int)FRAME_HEIGHT);
         return response;
+    }
+    else if (strncmp(msg, "FRAME ", 6) == 0)
+    {
+        int frameNum;
+        int paramCount = sscanf(msg + 5, "%d", &frameNum);
+        if (paramCount == 1)
+        {
+            if(frameNum > 0 && frameNum < MAX_ANIMATION_FRAMES){
+                currentFlutFrame = frameNum;
+            }
+        }
+    }
+    else if (strncmp(msg, "FRAMES ", 7) == 0)
+    {
+        int frameNum;
+        int paramCount = sscanf(msg + 6, "%d", &frameNum);
+        if (paramCount == 1)
+        {
+            if(frameNum > 0 && frameNum <= MAX_ANIMATION_FRAMES){
+                frameCount = frameNum;
+            }
+        }
     }
 
     return NULL;
@@ -120,7 +145,7 @@ const char *handle_message(const char *msg)
 
 void setPixel(int x, int y, uint8_t r, uint8_t g, uint8_t b)
 {
-    if (x >= FRAME_WIDTH || y >= FRAME_HEIGHT)
+    if (x < 0 || y < 0 || x >= FRAME_WIDTH || y >= FRAME_HEIGHT)
     {
         Serial.println("Invalid Position");
         return;
@@ -133,5 +158,5 @@ void setPixel(int x, int y, uint8_t r, uint8_t g, uint8_t b)
     c.parts.g = g;
     c.parts.b = b;
 
-    frameBuffer[y * FRAME_WIDTH + x] = c;
+    frameBuffer[currentFlutFrame][y * FRAME_WIDTH + x] = c;
 }

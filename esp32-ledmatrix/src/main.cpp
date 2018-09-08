@@ -3,13 +3,16 @@
 #include <WiFi.h>
 #include "config.h"
 #include "pixelflut.h"
-#include "pixelbuf.h"
+#include "render.h"
+#include "framebuffer.h"
 #include "gamma8.h"
 
 void sendFrame();
 
-volatile uint8_t outputBuffer[PANELS * PANEL_OUTPUTBUFFER_LENGTH * PWM_DEPTH] = {0};
-volatile uint8_t outputPwmCompare = 0;
+size_t currentDisplayFrame = 0;
+
+volatile uint8_t outputBuffer[PANELS * PANEL_OUTPUTBUFFER_LENGTH * (PWM_DEPTH + 1)] = {0};
+volatile size_t outputPwmCompare = 0;
 
 WiFiServer server(PIXELFLUT_PORT, PIXELFLUT_MAX_CLIENTS);
 
@@ -32,7 +35,7 @@ void setupTimers()
     timer = timerBegin(0, 80, true);
 
     timerAttachInterrupt(timer, &sendFrame, true);
-    timerAlarmWrite(timer, 30, true);
+    timerAlarmWrite(timer, 50, true);
     timerAlarmEnable(timer);
 }
 
@@ -57,30 +60,19 @@ void setupWifi()
     server.begin();
 }
 
-uint32_t setPinsLookup[256] = {0};
-uint32_t unsetPinsLookup[256] = {0};
+uint32_t colorPinsMask = 0;
+uint32_t colorPinsLookup[256] = {0};
 
 void setupLookupTables()
 {
-    uint32_t bitmasks[NUM_COLOR_PINS] = {0};
-    for (int i = 0; i < NUM_COLOR_PINS; i++)
-    {
-        bitmasks[i] = (uint32_t)1 << colorPins[i];
-    }
-
     for (uint16_t i = 0; i < 256; i++)
     {
         uint8_t bufferValue = i;
         for (int j = 0; j < NUM_COLOR_PINS; j++)
         {
-            if (bufferValue & 0x01)
-            {
-                setPinsLookup[i] |= bitmasks[j];
-            }
-            else
-            {
-                unsetPinsLookup[i] |= bitmasks[j];
-            }
+            uint32_t pinMask = (uint32_t)1 << colorPins[j];
+            colorPinsLookup[i] |= (bufferValue & 0x01) ? pinMask : 0;
+            colorPinsMask |= pinMask;
             bufferValue >>= 1;
         }
     }
@@ -91,14 +83,18 @@ void setup()
     Serial.begin(115200);
     setupPins();
 
+    frameCount = 1;
+    currentDisplayFrame = 0;
+
     for (int i = 0; i < NUM_PIXELS; i++)
     {
-        frameBuffer[i].parts.r1 = 0;
-        frameBuffer[i].parts.r2 = 0;
-        frameBuffer[i].parts.g = 0;
-        frameBuffer[i].parts.b = 0;
+        frameBuffer[currentDisplayFrame][i].parts.r1 = 0;
+        frameBuffer[currentDisplayFrame][i].parts.r2 = 0;
+        frameBuffer[currentDisplayFrame][i].parts.g = 0;
+        frameBuffer[currentDisplayFrame][i].parts.b = 0;
     }
-    updateOutputBuffer(outputBuffer);
+
+    updateOutputBuffer(frameBuffer[currentDisplayFrame], outputBuffer);
 
     setupWifi();
     setupLookupTables();
@@ -108,12 +104,20 @@ void setup()
 void loop()
 {
     unsigned long ms = millis();
-    unsigned long lastUpdateMillis = 0;
+    unsigned static long lastUpdateMillis = 0;
 
-    if (ms - 10 > lastUpdateMillis)
+    if (ms > lastUpdateMillis + 100)
     {
-        updateOutputBuffer(outputBuffer);
+
+        if(currentDisplayFrame >= frameCount){
+            currentDisplayFrame = 0;
+        }
+        unsigned long usStart = micros();
+        updateOutputBuffer(frameBuffer[currentDisplayFrame], outputBuffer);
+        unsigned long usEnd = micros();
+        Serial.println(usEnd - usStart);
         lastUpdateMillis = ms;
+        currentDisplayFrame++;
     }
 
     handle_clients(&server);
@@ -130,7 +134,7 @@ void loop()
 
 void sendFrame()
 {
-    if (outputPwmCompare >= PWM_DEPTH)
+    if (outputPwmCompare > PWM_DEPTH)
     {
         outputPwmCompare = 0;
     }
@@ -145,8 +149,8 @@ void sendFrame()
         uint8_t bufferValue = outputBuffer[i + pwmBufferShift];
         GPIO.out_w1tc = (uint32_t)1 << clkPin;
 
-        GPIO.out_w1ts = setPinsLookup[bufferValue];
-        GPIO.out_w1tc = unsetPinsLookup[bufferValue];
+        GPIO.out_w1ts = colorPinsLookup[bufferValue] & colorPinsMask;
+        GPIO.out_w1tc = (~colorPinsLookup[bufferValue]) & colorPinsMask;
 
         GPIO.out_w1ts = (uint32_t)1 << clkPin;
     }
