@@ -7,11 +7,17 @@
 #include "framebuffer.h"
 #include "gamma8.h"
 
+extern "C"
+{
+#include "dma/i2s_parallel.h"
+}
+
 void sendFrame();
 
 size_t currentDisplayFrame = 0;
 
-volatile uint8_t outputBuffer[PANELS * PANEL_OUTPUTBUFFER_LENGTH * (PWM_DEPTH + 1)] = {0};
+volatile uint8_t outputBuffer[OUTPUTBUFFER_BYTES] = {0};
+//uint8_t outputBuffer2[OUTPUTBUFFER_BYTES] = {0};
 volatile size_t outputPwmCompare = 0;
 
 WiFiServer server(PIXELFLUT_PORT, PIXELFLUT_MAX_CLIENTS);
@@ -36,7 +42,7 @@ void setupTimers()
 
     timerAttachInterrupt(timer, &sendFrame, true);
     timerAlarmWrite(timer, 50, true);
-    timerAlarmEnable(timer);
+    //timerAlarmEnable(timer);
 }
 
 void setupWifi()
@@ -60,22 +66,22 @@ void setupWifi()
     server.begin();
 }
 
-uint32_t colorPinsMask = 0;
-uint32_t colorPinsLookup[256] = {0};
-
-void setupLookupTables()
+void setupI2s()
 {
-    for (uint16_t i = 0; i < 256; i++)
-    {
-        uint8_t bufferValue = i;
-        for (int j = 0; j < NUM_COLOR_PINS; j++)
-        {
-            uint32_t pinMask = (uint32_t)1 << colorPins[j];
-            colorPinsLookup[i] |= (bufferValue & 0x01) ? pinMask : 0;
-            colorPinsMask |= pinMask;
-            bufferValue >>= 1;
-        }
-    }
+    i2s_parallel_buffer_desc_t bufdesc;
+    i2s_parallel_config_t cfg = {
+        .gpio_bus = {latchPin, colorPins[1], colorPins[2], colorPins[3], colorPins[4], colorPins[5], colorPins[6], colorPins[7]},
+        .gpio_clk = clkPin,
+        .clkspeed_hz = 10 * 1000 * 1000,
+        .bits = I2S_PARALLEL_BITS_8,
+        .buf = &bufdesc,
+        //.bufb = bufdesc[1],
+    };
+
+    bufdesc.memory = outputBuffer;
+    bufdesc.size = OUTPUTBUFFER_BYTES;
+
+    i2s_parallel_setup(&I2S1, &cfg);
 }
 
 void setup()
@@ -88,17 +94,16 @@ void setup()
 
     for (int i = 0; i < NUM_PIXELS; i++)
     {
-        frameBuffer[currentDisplayFrame][i].parts.r1 = 0;
-        frameBuffer[currentDisplayFrame][i].parts.r2 = 0;
-        frameBuffer[currentDisplayFrame][i].parts.g = 0;
-        frameBuffer[currentDisplayFrame][i].parts.b = 0;
+        frameBuffer[currentDisplayFrame][i].parts.r1 = 32;
+        frameBuffer[currentDisplayFrame][i].parts.r2 = 32;
+        frameBuffer[currentDisplayFrame][i].parts.g = 32;
+        frameBuffer[currentDisplayFrame][i].parts.b = 32;
     }
 
     updateOutputBuffer(frameBuffer[currentDisplayFrame], outputBuffer);
 
     setupWifi();
-    setupLookupTables();
-    setupTimers();
+    setupI2s();
 }
 
 void loop()
@@ -108,54 +113,19 @@ void loop()
 
     if (ms > lastUpdateMillis + 100)
     {
-
-        if(currentDisplayFrame >= frameCount){
+        if (currentDisplayFrame >= frameCount)
+        {
             currentDisplayFrame = 0;
         }
-        unsigned long usStart = micros();
+        //unsigned long usStart = micros();
         updateOutputBuffer(frameBuffer[currentDisplayFrame], outputBuffer);
-        unsigned long usEnd = micros();
-        Serial.println(usEnd - usStart);
+        //unsigned long usEnd = micros();
+        //Serial.println(usEnd - usStart);
         lastUpdateMillis = ms;
         currentDisplayFrame++;
     }
 
+    //i2s_parallel_flip_to_buffer(&I2S1, 0);
+
     handle_clients(&server);
-
-    // for (int i = 0; i < NUM_PIXELS; i++)
-    // {
-    //     frameBuffer[i].parts.r1 = 255;
-    //     frameBuffer[i].parts.r2 = 255;
-    //     frameBuffer[i].parts.g = 255;
-    //     frameBuffer[i].parts.b = 255;
-    // }
-    // updateOutputBuffer(outputBuffer);
-}
-
-void sendFrame()
-{
-    if (outputPwmCompare > PWM_DEPTH)
-    {
-        outputPwmCompare = 0;
-    }
-
-    size_t pwmBufferShift = PANEL_OUTPUTBUFFER_LENGTH * PANELS * outputPwmCompare;
-
-    digitalWrite(latchPin, false);
-    //GPIO.out_w1tc = (uint32_t)1 << latchPin;
-
-    for (size_t i = 0; i < PANEL_OUTPUTBUFFER_LENGTH * PANELS; i++)
-    {
-        uint8_t bufferValue = outputBuffer[i + pwmBufferShift];
-        GPIO.out_w1tc = (uint32_t)1 << clkPin;
-
-        GPIO.out_w1ts = colorPinsLookup[bufferValue] & colorPinsMask;
-        GPIO.out_w1tc = (~colorPinsLookup[bufferValue]) & colorPinsMask;
-
-        GPIO.out_w1ts = (uint32_t)1 << clkPin;
-    }
-    digitalWrite(latchPin, true);
-    //GPIO.out_w1ts = (uint32_t)1 << latchPin;
-
-    outputPwmCompare++;
 }

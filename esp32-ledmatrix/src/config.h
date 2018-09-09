@@ -23,6 +23,8 @@
 
 #define NUM_PIXELS (FRAME_WIDTH * FRAME_HEIGHT)
 
+#define OUTPUTBUFFER_BYTES (PANELS * PANEL_OUTPUTBUFFER_LENGTH * (PWM_DEPTH + 1))
+
 extern const int colorPins[NUM_COLOR_PINS];
 
 extern const int clkPin;
