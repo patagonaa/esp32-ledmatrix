@@ -1,20 +1,21 @@
 #include <Arduino.h>
 #include <stdlib.h>
 #include <WiFi.h>
+#include <ArtnetWifi.h>
 #include "config.h"
-#include "pixelflut.h"
 #include "render.h"
 #include "framebuffer.h"
 #include "gamma8.h"
 
 void sendFrame();
+void onDmxFrame(uint16_t universe, uint16_t length, uint8_t sequence, uint8_t *data);
 
-size_t currentDisplayFrame = 0;
-
-volatile uint8_t outputBuffer[PANELS * PANEL_OUTPUTBUFFER_LENGTH * (PWM_DEPTH + 1)] = {0};
+uint8_t outputBuffer[PANELS * PANEL_OUTPUTBUFFER_LENGTH * (PWM_DEPTH + 1)] = {0};
+volatile bool outputBufferDirty = true;
 volatile size_t outputPwmCompare = 0;
+unsigned long nextFrameAt = 0;
 
-WiFiServer server(PIXELFLUT_PORT, PIXELFLUT_MAX_CLIENTS);
+ArtnetWifi artnet;
 
 void setupPins()
 {
@@ -35,7 +36,7 @@ void setupTimers()
     timer = timerBegin(0, 80, true);
 
     timerAttachInterrupt(timer, &sendFrame, true);
-    timerAlarmWrite(timer, 50, true);
+    timerAlarmWrite(timer, 60, true);
     timerAlarmEnable(timer);
 }
 
@@ -57,9 +58,11 @@ void setupWifi()
     Serial.println("IP address: ");
     Serial.println(WiFi.localIP());
 
-    server.begin();
+    artnet.begin();
+    artnet.setArtDmxCallback(onDmxFrame);
 }
 
+const uint32_t clkPinMask = (uint32_t)1 << clkPin;
 uint32_t colorPinsMask = 0;
 uint32_t colorPinsLookup[256] = {0};
 
@@ -80,56 +83,38 @@ void setupLookupTables()
 
 void setup()
 {
-    Serial.begin(115200);
+    Serial.begin(921000);
     setupPins();
-
-    frameCount = 1;
-    currentDisplayFrame = 0;
 
     for (int i = 0; i < NUM_PIXELS; i++)
     {
-        frameBuffer[currentDisplayFrame][i].parts.r1 = 0;
-        frameBuffer[currentDisplayFrame][i].parts.r2 = 0;
-        frameBuffer[currentDisplayFrame][i].parts.g = 0;
-        frameBuffer[currentDisplayFrame][i].parts.b = 0;
+        frameBuffer[i].parts.r1 = 32;
+        frameBuffer[i].parts.r2 = 32;
+        frameBuffer[i].parts.g = 32;
+        frameBuffer[i].parts.b = 32;
     }
 
-    updateOutputBuffer(frameBuffer[currentDisplayFrame], outputBuffer);
+    updateOutputBuffer(frameBuffer, outputBuffer);
 
     setupWifi();
     setupLookupTables();
     setupTimers();
 }
 
+
 void loop()
 {
     unsigned long ms = millis();
-    unsigned static long lastUpdateMillis = 0;
 
-    if (ms > lastUpdateMillis + 100)
+    if (ms > nextFrameAt && outputBufferDirty)
     {
-
-        if(currentDisplayFrame >= frameCount){
-            currentDisplayFrame = 0;
-        }
-        unsigned long usStart = micros();
-        updateOutputBuffer(frameBuffer[currentDisplayFrame], outputBuffer);
-        unsigned long usEnd = micros();
-        Serial.println(usEnd - usStart);
-        lastUpdateMillis = ms;
-        currentDisplayFrame++;
+        Serial.print(";");
+        outputBufferDirty = false;
+        updateOutputBuffer(frameBuffer, outputBuffer);
+        nextFrameAt = ms + 66;
     }
 
-    handle_clients(&server);
-
-    // for (int i = 0; i < NUM_PIXELS; i++)
-    // {
-    //     frameBuffer[i].parts.r1 = 255;
-    //     frameBuffer[i].parts.r2 = 255;
-    //     frameBuffer[i].parts.g = 255;
-    //     frameBuffer[i].parts.b = 255;
-    // }
-    // updateOutputBuffer(outputBuffer);
+    artnet.read();
 }
 
 void sendFrame()
@@ -143,19 +128,49 @@ void sendFrame()
 
     digitalWrite(latchPin, false);
     //GPIO.out_w1tc = (uint32_t)1 << latchPin;
-
+    size_t bufferPtr = pwmBufferShift;
     for (size_t i = 0; i < PANEL_OUTPUTBUFFER_LENGTH * PANELS; i++)
     {
-        uint8_t bufferValue = outputBuffer[i + pwmBufferShift];
-        GPIO.out_w1tc = (uint32_t)1 << clkPin;
+        uint8_t bufferValue = outputBuffer[bufferPtr++];
+        GPIO.out_w1tc = clkPinMask;
 
-        GPIO.out_w1ts = colorPinsLookup[bufferValue] & colorPinsMask;
-        GPIO.out_w1tc = (~colorPinsLookup[bufferValue]) & colorPinsMask;
+        uint32_t colorPinsValue = colorPinsLookup[bufferValue];
+        GPIO.out_w1ts = colorPinsValue & colorPinsMask;
+        GPIO.out_w1tc = (~colorPinsValue) & colorPinsMask;
 
-        GPIO.out_w1ts = (uint32_t)1 << clkPin;
+        GPIO.out_w1ts = clkPinMask;
     }
     digitalWrite(latchPin, true);
     //GPIO.out_w1ts = (uint32_t)1 << latchPin;
 
     outputPwmCompare++;
+}
+
+void onDmxFrame(uint16_t universe, uint16_t length, uint8_t sequence, uint8_t *data)
+{
+    if (universe < 1 || universe > 4)
+    {
+        return;
+    }
+
+    Serial.print(".");
+
+    size_t pixelOffset = (universe - 1) * FRAME_WIDTH * 4;
+    //Serial.println(pixelOffset);
+
+    for (size_t i = 0; i < (length / 3); i++)
+    {
+        if (i > FRAME_WIDTH * 4)
+            break;
+        size_t pixelIndex = i * 3;
+        //Serial.println(data[pixelIndex]);
+        uint8_t r = data[pixelIndex];
+        uint8_t g = data[pixelIndex + 1];
+        uint8_t b = data[pixelIndex + 2];
+
+        uint32_t rrgb = b | g << 8 | r << 16 | r << 24;
+
+        frameBuffer[i + pixelOffset].rrgb = rrgb;
+    }
+    outputBufferDirty = true;
 }

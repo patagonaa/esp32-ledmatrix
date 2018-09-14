@@ -10,10 +10,6 @@
 
 #define PWM_DEPTH (1 << 8)
 
-#define PIXELFLUT_PORT 1337
-
-#define MAX_ANIMATION_FRAMES 1
-
 #define PANELS (PANELS_X * PANELS_Y)
 
 #define FRAME_WIDTH (PANEL_WIDTH * PANELS_X)

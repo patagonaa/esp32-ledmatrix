@@ -23,10 +23,10 @@ void updateOutputBuffer(const union color *frameBuffer, volatile uint8_t *output
             uint16_t pixelIndex = rowIndex + x;
             union color pixel = frameBuffer[pixelIndex];
 
-            pixel.parts.r1 = gamma8[pixel.parts.r1] / 25;
-            pixel.parts.r2 = gamma8[pixel.parts.r2] / 25;
-            pixel.parts.g = gamma8[pixel.parts.g] / 25;
-            pixel.parts.b = gamma8[pixel.parts.b] / 25;
+            pixel.parts.r1 = gamma8[pixel.parts.r1];
+            pixel.parts.r2 = gamma8[pixel.parts.r2];
+            pixel.parts.g = gamma8[pixel.parts.g];
+            pixel.parts.b = gamma8[pixel.parts.b];
 
             div_t panelXDiv = div(x, PANEL_WIDTH);
             int panelX = panelXDiv.quot;
@@ -47,7 +47,11 @@ void updateOutputBuffer(const union color *frameBuffer, volatile uint8_t *output
                 size_t outputBufferIndex = panelOffset + pwmCompareOffset + panelPixelIndex;
 
                 //outputBuffer[outputBufferIndex] = ((outputBuffer[outputBufferIndex] & (half ? 0x0F : 0xF0))) | (getPixelColor(pixel, pwmCompare) << (half ? 4 : 0));
-                outputBuffer[outputBufferIndex] = ((outputBuffer[outputBufferIndex] & (yHalf ? 0x0F : 0xF0))) | (yHalf ? getPixelColor2(pixel, pwmCompare) : getPixelColor(pixel, pwmCompare));
+                uint8_t bufferValue = ((outputBuffer[outputBufferIndex] & (yHalf ? 0x0F : 0xF0))) | (yHalf ? getPixelColor2(pixel, pwmCompare) : getPixelColor(pixel, pwmCompare));
+
+                outputBuffer[outputBufferIndex] = bufferValue;
+                // outputBuffer[outputBufferIndex] &= ~bufferValue;
+                // outputBuffer[outputBufferIndex] |= bufferValue;
             }
         }
     }
