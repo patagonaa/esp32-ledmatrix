@@ -36,7 +36,7 @@ void setupTimers()
     timer = timerBegin(0, 80, true);
 
     timerAttachInterrupt(timer, &sendFrame, true);
-    timerAlarmWrite(timer, 60, true);
+    timerAlarmWrite(timer, 50, true);
     timerAlarmEnable(timer);
 }
 
@@ -88,10 +88,10 @@ void setup()
 
     for (int i = 0; i < NUM_PIXELS; i++)
     {
-        frameBuffer[i].parts.r1 = 32;
-        frameBuffer[i].parts.r2 = 32;
-        frameBuffer[i].parts.g = 32;
-        frameBuffer[i].parts.b = 32;
+        frameBuffer[i].parts.r1 = 1;
+        frameBuffer[i].parts.r2 = 1;
+        frameBuffer[i].parts.g = 1;
+        frameBuffer[i].parts.b = 1;
     }
 
     updateOutputBuffer(frameBuffer, outputBuffer);
@@ -101,17 +101,20 @@ void setup()
     setupTimers();
 }
 
-
 void loop()
 {
     unsigned long ms = millis();
 
     if (ms > nextFrameAt && outputBufferDirty)
     {
-        Serial.print(";");
+        //Serial.print(";");
         outputBufferDirty = false;
+        //unsigned long start = micros();
         updateOutputBuffer(frameBuffer, outputBuffer);
-        nextFrameAt = ms + 66;
+        //unsigned long end = micros();
+        //Serial.print("Render:");
+        //Serial.println(end - start);
+        nextFrameAt = ms + 40;
     }
 
     artnet.read();
@@ -124,12 +127,12 @@ void sendFrame()
         outputPwmCompare = 0;
     }
 
-    size_t pwmBufferShift = PANEL_OUTPUTBUFFER_LENGTH * PANELS * outputPwmCompare;
+    size_t pwmBufferShift = PANELS_OUTPUTBUFFER_LENGTH * outputPwmCompare;
 
     digitalWrite(latchPin, false);
     //GPIO.out_w1tc = (uint32_t)1 << latchPin;
     size_t bufferPtr = pwmBufferShift;
-    for (size_t i = 0; i < PANEL_OUTPUTBUFFER_LENGTH * PANELS; i++)
+    for (size_t i = 0; i < PANELS_OUTPUTBUFFER_LENGTH; i++)
     {
         uint8_t bufferValue = outputBuffer[bufferPtr++];
         GPIO.out_w1tc = clkPinMask;
@@ -148,27 +151,31 @@ void sendFrame()
 
 void onDmxFrame(uint16_t universe, uint16_t length, uint8_t sequence, uint8_t *data)
 {
-    if (universe < 1 || universe > 4)
+    uint16_t panelNum = universe - ARTNET_START_UNIVERSE;
+
+    //one Artnet universe per display
+    if (panelNum < 0 || panelNum >= PANELS)
     {
         return;
     }
 
-    Serial.print(".");
+    //Serial.print(".");
+    Serial.println(sequence);
 
-    size_t pixelOffset = (universe - 1) * FRAME_WIDTH * 4;
-    //Serial.println(pixelOffset);
+    size_t universePixels = PANEL_WIDTH * PANEL_HEIGHT;
 
-    for (size_t i = 0; i < (length / 3); i++)
+    size_t pixelOffset = panelNum * universePixels;
+
+    size_t pixelLength = length / 3;
+    size_t endIndex = pixelLength > universePixels ? universePixels : pixelLength;
+    for (size_t i = 0; i < endIndex; i++)
     {
-        if (i > FRAME_WIDTH * 4)
-            break;
         size_t pixelIndex = i * 3;
-        //Serial.println(data[pixelIndex]);
-        uint8_t r = data[pixelIndex];
-        uint8_t g = data[pixelIndex + 1];
-        uint8_t b = data[pixelIndex + 2];
+        uint8_t r = gamma8[data[pixelIndex    ]];
+        uint8_t g = gamma8[data[pixelIndex + 1]];
+        uint8_t b = gamma8[data[pixelIndex + 2]];
 
-        uint32_t rrgb = b | g << 8 | r << 16 | r << 24;
+        uint32_t rrgb = b << 24 | g << 16 | r << 8 | r;
 
         frameBuffer[i + pixelOffset].rrgb = rrgb;
     }
