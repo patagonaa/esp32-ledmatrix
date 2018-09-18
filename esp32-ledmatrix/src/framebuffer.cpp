@@ -3,3 +3,4 @@
 #include "color.h"
 
 union color frameBuffer[NUM_PIXELS] = {0};
+volatile bool outputBufferDirty = true;
