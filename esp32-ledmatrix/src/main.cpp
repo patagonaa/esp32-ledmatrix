@@ -6,6 +6,7 @@
 #include "render.h"
 #include "framebuffer.h"
 #include "gamma8.h"
+#include "4x6_horizontal_MSB_1.h"
 
 extern "C"
 {
@@ -19,6 +20,7 @@ uint8_t outputBuffer[OUTPUTBUFFER_BYTES] = {0};
 
 volatile size_t outputPwmCompare = 0;
 unsigned long nextFrameAt = 0;
+bool startScreen = true;
 
 ArtnetWifi artnet;
 
@@ -33,16 +35,6 @@ void setupPins()
 
     pinMode(oePin, OUTPUT);
     digitalWrite(oePin, false);
-}
-
-void setupTimers()
-{
-    hw_timer_t *timer = NULL;
-    timer = timerBegin(0, 80, true);
-
-    timerAttachInterrupt(timer, &sendFrame, true);
-    timerAlarmWrite(timer, 50, true);
-    //timerAlarmEnable(timer);
 }
 
 void setupWifi()
@@ -104,10 +96,49 @@ void setup()
     setupI2s();
 }
 
+void drawChar(uint8_t chr, int x, int y)
+{
+    for (int charY = 0; charY < 6; charY++)
+    {
+        for (int charX = 0; charX < 4; charX++)
+        {
+            bool px = (font[chr][charY] & (1 << (3 - charX)));
+            frameBuffer[((y + charY) * FRAME_WIDTH) + x + charX].rrgb = px ? 0x01010101 : 0x00000000;
+        }
+    }
+}
+
+void drawIpPart(uint32_t part)
+{
+    for (size_t i = 0; i < NUM_PIXELS; i++)
+    {
+        frameBuffer[i].rrgb = 0;
+    }
+
+    IPAddress ip = WiFi.localIP();
+    int ipPartNum = part % 6;
+    if (ipPartNum < 4)
+    {
+        char ipPartStr[4];
+        sprintf(ipPartStr, "%d", ip[ipPartNum]);
+        for (int i = 0; i < 3; i++)
+        {
+            if (ipPartStr[i] == '\0')
+                break;
+            drawChar(ipPartStr[i], i * 4, 0);
+        }
+    }
+}
+
 void loop()
 {
     unsigned long ms = millis();
-    if (ms > nextFrameAt && outputBufferDirty)
+    if (startScreen)
+    {
+        drawIpPart(ms / 1000);
+        updateOutputBuffer(frameBuffer, outputBuffer);
+    }
+    else if (ms > nextFrameAt && outputBufferDirty)
     {
         //Serial.print(";");
         outputBufferDirty = false;
@@ -119,5 +150,8 @@ void loop()
         nextFrameAt = ms + 40;
     }
 
-    artnet.read();
+    if (artnet.read() && startScreen)
+    {
+        startScreen = false;
+    }
 }
