@@ -17,23 +17,32 @@ void updateOutputBuffer(const union color *frameBuffer, volatile uint8_t *output
 
         div_t yHalfDiv = div(panelYDiv.rem, PANEL_HEIGHT / 2);
         int yHalf = yHalfDiv.quot;
+        if(yHalf == 1)
+            continue;
 
         for (uint16_t x = 0; x < FRAME_WIDTH; x++)
         {
             uint16_t pixelIndex = rowIndex + x;
-            union color pixel = frameBuffer[pixelIndex];
+            union color pixelTop = frameBuffer[pixelIndex];
+            union color pixelBottom = frameBuffer[pixelIndex + (FRAME_WIDTH * (PANEL_HEIGHT / 2))];
 
-            pixel.parts.r1 = gamma8[pixel.parts.r1];
-            pixel.parts.r2 = gamma8[pixel.parts.r2];
-            pixel.parts.g = gamma8[pixel.parts.g];
-            pixel.parts.b = gamma8[pixel.parts.b];
+            // pixelTop.parts.r1 = gamma8[pixelTop.parts.r1];
+            // pixelTop.parts.r2 = gamma8[pixelTop.parts.r2];
+            // pixelTop.parts.g =  gamma8[pixelTop.parts.g];
+            // pixelTop.parts.b =  gamma8[pixelTop.parts.b];
+
+            // pixelBottom.parts.r1 = gamma8[pixelBottom.parts.r1];
+            // pixelBottom.parts.r2 = gamma8[pixelBottom.parts.r2];
+            // pixelBottom.parts.g =  gamma8[pixelBottom.parts.g];
+            // pixelBottom.parts.b =  gamma8[pixelBottom.parts.b];
 
             div_t panelXDiv = div(x, PANEL_WIDTH);
             int panelX = panelXDiv.quot;
 
             int panelIndex = panelMapping[panelX][panelY];
+            size_t panelOffset = panelIndex * PANEL_OUTPUTBUFFER_LENGTH;
 
-            div_t xQuarterDiv = div(panelXDiv.rem, 4);
+            div_t xQuarterDiv = div(panelXDiv.rem, PANEL_WIDTH / 4);
             int xQuarter = xQuarterDiv.quot;
 
             uint16_t row = yHalfDiv.rem;
@@ -42,19 +51,23 @@ void updateOutputBuffer(const union color *frameBuffer, volatile uint8_t *output
             size_t panelPixelIndex = xQuarter * 16 + row * 4 + col;
             for (size_t pwmCompare = 0; pwmCompare <= PWM_DEPTH; pwmCompare++)
             {
-                size_t panelOffset = panelIndex * PANEL_OUTPUTBUFFER_LENGTH;
-                size_t pwmCompareOffset = pwmCompare * PANEL_OUTPUTBUFFER_LENGTH * PANELS;
+                size_t pwmCompareOffset = pwmCompare * PANELS_OUTPUTBUFFER_LENGTH;
                 size_t outputBufferIndex = panelOffset + pwmCompareOffset + panelPixelIndex;
 
-                uint8_t bufferValue = ((outputBuffer[outputBufferIndex] & (yHalf ? 0x0E : 0xF0))) |
-                                      (yHalf ? getPixelColor2(pixel, pwmCompare) : getPixelColor(pixel, pwmCompare)) |
-                                      (pwmCompare == 1 ? 0x01 : 0x00);
+                uint8_t colorValue = getPixelColor2(pixelBottom, pwmCompare) | getPixelColor(pixelTop, pwmCompare);
+
+                uint8_t bufferValue = (colorValue & 0xFE);
+
+                if(x == FRAME_WIDTH - 1 && panelIndex == PANELS - 1 && yHalfDiv.rem == 3){
+                    bufferValue |= 0x01;
+                }
 
                 //causes flicker... wtf?
                 //outputBuffer[outputBufferIndex] = bufferValue;
 
-                outputBuffer[outputBufferIndex] &= ~(bufferValue);
-                outputBuffer[outputBufferIndex] |= bufferValue;
+                outputBuffer[outputBufferIndex] = bufferValue;
+                //outputBuffer[outputBufferIndex] &= ~(bufferValue);
+                //outputBuffer[outputBufferIndex] |= bufferValue;
             }
         }
     }

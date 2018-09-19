@@ -1,8 +1,8 @@
 #include <Arduino.h>
 #include <stdlib.h>
 #include <WiFi.h>
+#include <ArtnetWifi.h>
 #include "config.h"
-#include "pixelflut.h"
 #include "render.h"
 #include "framebuffer.h"
 #include "gamma8.h"
@@ -13,14 +13,14 @@ extern "C"
 }
 
 void sendFrame();
+void onDmxFrame(uint16_t universe, uint16_t length, uint8_t sequence, uint8_t *data);
 
-size_t currentDisplayFrame = 0;
+uint8_t outputBuffer[OUTPUTBUFFER_BYTES] = {0};
 
-volatile uint8_t outputBuffer[OUTPUTBUFFER_BYTES] = {0};
-//uint8_t outputBuffer2[OUTPUTBUFFER_BYTES] = {0};
 volatile size_t outputPwmCompare = 0;
+unsigned long nextFrameAt = 0;
 
-WiFiServer server(PIXELFLUT_PORT, PIXELFLUT_MAX_CLIENTS);
+ArtnetWifi artnet;
 
 void setupPins()
 {
@@ -63,7 +63,8 @@ void setupWifi()
     Serial.println("IP address: ");
     Serial.println(WiFi.localIP());
 
-    server.begin();
+    artnet.begin();
+    artnet.setArtDmxCallback(onDmxFrame);
 }
 
 void setupI2s()
@@ -86,21 +87,18 @@ void setupI2s()
 
 void setup()
 {
-    Serial.begin(115200);
+    Serial.begin(921000);
     setupPins();
-
-    frameCount = 1;
-    currentDisplayFrame = 0;
 
     for (int i = 0; i < NUM_PIXELS; i++)
     {
-        frameBuffer[currentDisplayFrame][i].parts.r1 = 32;
-        frameBuffer[currentDisplayFrame][i].parts.r2 = 32;
-        frameBuffer[currentDisplayFrame][i].parts.g = 32;
-        frameBuffer[currentDisplayFrame][i].parts.b = 32;
+        frameBuffer[i].parts.r1 = 1;
+        frameBuffer[i].parts.r2 = 1;
+        frameBuffer[i].parts.g = 1;
+        frameBuffer[i].parts.b = 1;
     }
 
-    updateOutputBuffer(frameBuffer[currentDisplayFrame], outputBuffer);
+    updateOutputBuffer(frameBuffer, outputBuffer);
 
     setupWifi();
     setupI2s();
@@ -109,23 +107,17 @@ void setup()
 void loop()
 {
     unsigned long ms = millis();
-    unsigned static long lastUpdateMillis = 0;
-
-    if (ms > lastUpdateMillis + 100)
+    if (ms > nextFrameAt && outputBufferDirty)
     {
-        if (currentDisplayFrame >= frameCount)
-        {
-            currentDisplayFrame = 0;
-        }
-        //unsigned long usStart = micros();
-        updateOutputBuffer(frameBuffer[currentDisplayFrame], outputBuffer);
-        //unsigned long usEnd = micros();
-        //Serial.println(usEnd - usStart);
-        lastUpdateMillis = ms;
-        currentDisplayFrame++;
+        //Serial.print(";");
+        outputBufferDirty = false;
+        //unsigned long start = micros();
+        updateOutputBuffer(frameBuffer, outputBuffer);
+        //unsigned long end = micros();
+        //Serial.print("Render:");
+        //Serial.println(end - start);
+        nextFrameAt = ms + 40;
     }
 
-    //i2s_parallel_flip_to_buffer(&I2S1, 0);
-
-    handle_clients(&server);
+    artnet.read();
 }
