@@ -65,6 +65,8 @@ void updateOutputBuffer(const union color *frameBuffer, volatile uint8_t *output
                 //causes flicker... wtf?
                 //outputBuffer[outputBufferIndex] = bufferValue;
 
+                outputBufferIndex ^= 0x02; //fix dma index
+
                 outputBuffer[outputBufferIndex] = bufferValue;
                 //outputBuffer[outputBufferIndex] &= ~(bufferValue);
                 //outputBuffer[outputBufferIndex] |= bufferValue;
