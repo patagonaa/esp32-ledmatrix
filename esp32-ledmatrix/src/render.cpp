@@ -17,7 +17,7 @@ void updateOutputBuffer(const union color *frameBuffer, volatile uint8_t *output
 
         div_t yHalfDiv = div(panelYDiv.rem, PANEL_HEIGHT / 2);
         int yHalf = yHalfDiv.quot;
-        if(yHalf == 1)
+        if (yHalf == 1)
             continue;
 
         for (uint16_t x = 0; x < FRAME_WIDTH; x++)
@@ -58,7 +58,8 @@ void updateOutputBuffer(const union color *frameBuffer, volatile uint8_t *output
 
                 uint8_t bufferValue = (colorValue & 0xFE);
 
-                if(x == FRAME_WIDTH - 1 && panelIndex == PANELS - 1 && yHalfDiv.rem == 3){
+                if ((outputBufferIndex % PANELS_OUTPUTBUFFER_LENGTH) == PANELS_OUTPUTBUFFER_LENGTH - 1)
+                {
                     bufferValue |= 0x01;
                 }
 

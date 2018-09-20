@@ -1,5 +1,5 @@
-#include<Arduino.h>
-#include<stddef.h>
+#include <Arduino.h>
+#include <stddef.h>
 #include "artnet.h"
 #include "config.h"
 #include "gamma8.h"
@@ -15,25 +15,23 @@ void onDmxFrame(uint16_t universe, uint16_t length, uint8_t sequence, uint8_t *d
         return;
     }
 
-    //Serial.print(".");
+    Serial.print(".");
     //Serial.println(sequence);
 
     size_t universePixels = PANEL_WIDTH * PANEL_HEIGHT;
-
-    size_t pixelOffset = panelNum * universePixels;
 
     size_t pixelLength = length / 3;
     size_t endIndex = pixelLength > universePixels ? universePixels : pixelLength;
     for (size_t i = 0; i < endIndex; i++)
     {
         size_t pixelIndex = i * 3;
-        uint8_t r = gamma8[data[pixelIndex    ]];
+        uint8_t r = gamma8[data[pixelIndex]];
         uint8_t g = gamma8[data[pixelIndex + 1]];
         uint8_t b = gamma8[data[pixelIndex + 2]];
 
         uint32_t rrgb = b << 24 | g << 16 | r << 8 | r;
 
-        frameBuffer[i + pixelOffset].rrgb = rrgb;
+        frameBuffer[panelNum * universePixels + i].rrgb = rrgb;
     }
     outputBufferDirty = true;
 }

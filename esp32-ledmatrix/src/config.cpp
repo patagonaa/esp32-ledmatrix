@@ -2,7 +2,8 @@
 
 const int colorPins[NUM_COLOR_PINS] = {13, 12, 14, 27, 26, 25, 2, 4};
 
-const int panelMapping[PANELS_X][PANELS_Y] = {{0, 1}};
+const int panelMapping[PANELS_X][PANELS_Y] = {{0, 1}, {2, 3}};
+//const int panelMapping[PANELS_X][PANELS_Y] = {{0, 1}};
 
 const int clkPin = 18;
 const int latchPin = 19;

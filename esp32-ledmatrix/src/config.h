@@ -2,13 +2,13 @@
 
 #define NUM_COLOR_PINS 8
 
-#define PANELS_X 1
+#define PANELS_X 2
 #define PANELS_Y 2
 
 #define PANEL_WIDTH 16
 #define PANEL_HEIGHT 8
 
-#define PWM_DEPTH (1 << 8)
+#define PWM_DEPTH (1 << 7)
 
 #define PANELS (PANELS_X * PANELS_Y)
 

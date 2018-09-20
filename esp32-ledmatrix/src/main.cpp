@@ -84,10 +84,10 @@ void setup()
 
     for (int i = 0; i < NUM_PIXELS; i++)
     {
-        frameBuffer[i].parts.r1 = 1;
-        frameBuffer[i].parts.r2 = 1;
-        frameBuffer[i].parts.g = 1;
-        frameBuffer[i].parts.b = 1;
+        frameBuffer[i].parts.r1 = 0;
+        frameBuffer[i].parts.r2 = 0;
+        frameBuffer[i].parts.g =  0;
+        frameBuffer[i].parts.b =  0;
     }
 
     updateOutputBuffer(frameBuffer, outputBuffer);
@@ -147,7 +147,7 @@ void loop()
         //unsigned long end = micros();
         //Serial.print("Render:");
         //Serial.println(end - start);
-        nextFrameAt = ms + 40;
+        nextFrameAt = ms + 80;
     }
 
     if (artnet.read() && startScreen)
