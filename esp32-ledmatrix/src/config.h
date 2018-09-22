@@ -8,7 +8,9 @@
 #define PANEL_WIDTH 16
 #define PANEL_HEIGHT 8
 
-#define PWM_DEPTH (1 << 7)
+#define PWM_BITS 7
+
+#define PWM_DEPTH (1 << PWM_BITS)
 
 #define PANELS (PANELS_X * PANELS_Y)
 

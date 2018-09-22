@@ -35,6 +35,10 @@ void setupPins()
 
     pinMode(oePin, OUTPUT);
     digitalWrite(oePin, false);
+
+    ledcSetup(0, 100000, 8);
+    ledcAttachPin(oePin, 0);
+    ledcWrite(0, 220); //TODO: set via artnet
 }
 
 void setupWifi()
@@ -86,8 +90,8 @@ void setup()
     {
         frameBuffer[i].parts.r1 = 0;
         frameBuffer[i].parts.r2 = 0;
-        frameBuffer[i].parts.g =  0;
-        frameBuffer[i].parts.b =  0;
+        frameBuffer[i].parts.g = 0;
+        frameBuffer[i].parts.b = 0;
     }
 
     updateOutputBuffer(frameBuffer, outputBuffer);
@@ -132,26 +136,30 @@ void drawIpPart(uint32_t part)
 
 void loop()
 {
-    unsigned long ms = millis();
     if (startScreen)
     {
+        unsigned long ms = millis();
+        if (artnet.read())
+            startScreen = false;
         drawIpPart(ms / 1000);
         updateOutputBuffer(frameBuffer, outputBuffer);
     }
-    else if (ms > nextFrameAt && outputBufferDirty)
+    else
     {
-        //Serial.print(";");
-        outputBufferDirty = false;
-        //unsigned long start = micros();
-        updateOutputBuffer(frameBuffer, outputBuffer);
-        //unsigned long end = micros();
-        //Serial.print("Render:");
-        //Serial.println(end - start);
-        nextFrameAt = ms + 80;
-    }
+        if (!artnet.read())
+            return;
 
-    if (artnet.read() && startScreen)
-    {
-        startScreen = false;
+        unsigned long ms;
+        if (outputBufferDirty && (ms = millis()) > nextFrameAt)
+        {
+            //Serial.print(";");
+            outputBufferDirty = false;
+            //unsigned long start = micros();
+            updateOutputBuffer(frameBuffer, outputBuffer);
+            //unsigned long end = micros();
+            //Serial.print("Render:");
+            //Serial.println(end - start);
+            nextFrameAt = ms + 40;
+        }
     }
 }

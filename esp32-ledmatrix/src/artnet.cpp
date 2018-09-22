@@ -25,9 +25,9 @@ void onDmxFrame(uint16_t universe, uint16_t length, uint8_t sequence, uint8_t *d
     for (size_t i = 0; i < endIndex; i++)
     {
         size_t pixelIndex = i * 3;
-        uint8_t r = gamma8[data[pixelIndex]];
-        uint8_t g = gamma8[data[pixelIndex + 1]];
-        uint8_t b = gamma8[data[pixelIndex + 2]];
+        uint8_t r = gamma8[data[pixelIndex]]     >> (8 - PWM_BITS);
+        uint8_t g = gamma8[data[pixelIndex + 1]] >> (8 - PWM_BITS);
+        uint8_t b = gamma8[data[pixelIndex + 2]] >> (8 - PWM_BITS);
 
         uint32_t rrgb = b << 24 | g << 16 | r << 8 | r;
 
